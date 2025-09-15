@@ -1,4 +1,5 @@
-use crate::wire::{Position, Wire};
+use crate::wire::Wire;
+use crate::position::{Position, ORIGIN};
 use std::path::Path;
 
 #[derive(Clone, Debug)]
@@ -8,14 +9,23 @@ pub struct ModelConfig {
     pub scale: f32,
 }
 
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            name: String::from("cube"),
+            position: Position::new(0.0, 0.0, 0.0),
+            scale: 1.0,
+        }
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct Model {
     pub wires: Vec<Wire>,
-    pub config: Option<ModelConfig>,
+    pub config: ModelConfig,
 }
 
-impl Model {
-    /// Create a model from a ModelConfig
+impl Model { 
     pub fn from_config(config: &ModelConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let file_name = if config.name.ends_with(".stl") // optional .stl
             { config.name.clone() }
@@ -28,7 +38,7 @@ impl Model {
         model.scale(config.scale);
         model.position_at(config.position);
 
-        model.config = Some(config.clone());
+        model.config = config.clone();
         
         Ok(model)
     }
@@ -71,7 +81,7 @@ impl Model {
         
         Self::remove_duplicate_wires(&mut wires);
         
-        Ok(Model { wires, config: None })
+        Ok(Model { wires, config: ModelConfig::default() })
     }
     
     fn remove_duplicate_wires(wires: &mut Vec<Wire>) {
@@ -97,7 +107,6 @@ impl Model {
         }
     }
     
-    /// Scale the model to fit within a given size
     pub fn scale(&mut self, size: f32) {
         // prescaled bounds of the model
         let mut min_x = f32::MAX;
@@ -140,8 +149,8 @@ impl Model {
     
     /// Position the model at a specific location
     pub fn position_at(&mut self, pos: Position) {
-        let z_offset:f32 = if self.config.is_some() && self.config.as_ref().unwrap().position.approx_equals(&crate::wire::ORIGIN)
-            { self.config.as_ref().unwrap().scale / 2.0 }
+        let z_offset:f32 = if self.config.position.approx_equals(&ORIGIN)
+            { self.config.scale / 2.0 }
             else { 0.0 };
 
         for wire in &mut self.wires {

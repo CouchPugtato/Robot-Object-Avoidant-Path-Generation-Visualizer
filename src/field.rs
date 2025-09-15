@@ -1,6 +1,7 @@
 use nannou::color::*;
 
-use crate::wire::{Position, Wire};
+use crate::wire::Wire;
+use crate::position::Position;
 
 
 const FIELD_WIDTH: f32 = 8.23;
