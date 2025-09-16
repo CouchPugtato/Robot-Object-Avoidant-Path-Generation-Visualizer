@@ -4,8 +4,8 @@ use crate::wire::Wire;
 use crate::position::Position;
 
 
-const FIELD_WIDTH: f32 = 8.23;
-const FIELD_LENGTH: f32 = 16.46;
+pub const FIELD_WIDTH: f32 = 8.23;
+pub const FIELD_LENGTH: f32 = 16.46;
 
 pub fn field_border() -> [Wire; 9] {
 

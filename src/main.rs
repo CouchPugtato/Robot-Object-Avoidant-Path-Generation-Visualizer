@@ -6,6 +6,7 @@ mod wire;
 mod field;
 mod obstacle;
 mod position;
+mod gradient_field;
 
 use model::{Model, ModelConfig};
 use crate::position::Position;
@@ -45,10 +46,14 @@ struct AppModel {
     selected_obstacle_index: Option<usize>,
     create_as_obstacle: bool,
     
-    // New obstacle creation fields
     new_obstacle_name: String,
     new_obstacle_radius: f32,
     new_obstacle_position: Position,
+    
+    gradient_field: Option<gradient_field::GradientWire>,
+    gradient_x_resolution: f32,
+    gradient_y_resolution: f32,
+    gradient_line_resolution: f32,
 }
 
 
@@ -65,6 +70,38 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                 ui.checkbox(&mut model.show_path, "Show Path");
                 ui.checkbox(&mut model.show_points, "Show Points");
                 ui.checkbox(&mut model.show_gradient_function, "Show Gradient Function");
+                
+                if model.show_gradient_function {
+                    ui.separator();
+                    ui.heading("Gradient Field Settings");
+                                        
+                    ui.add(egui::Slider::new(&mut model.gradient_x_resolution, 0.01..=10.0).text("X Resolution"));
+                    ui.add(egui::Slider::new(&mut model.gradient_y_resolution, 0.01..=10.0).text("Y Resolution"));
+                    ui.add(egui::Slider::new(&mut model.gradient_line_resolution, 0.01..=1.0).text("Line Resolution"));
+                    
+                    if ui.button("Update Gradient Field").clicked() {
+                        let gradient_function = gradient_field::obstacle_sum;
+                        
+                        gradient_field::set_obstacles_ref(&model.obstacles);
+                        
+                        if let Some(gradient_field) = &mut model.gradient_field {
+                            gradient_field.gradient_function = gradient_function;
+                            gradient_field.x_resolution = model.gradient_x_resolution;
+                            gradient_field.y_resolution = model.gradient_y_resolution;
+                            gradient_field.line_resolution = model.gradient_line_resolution;
+                            gradient_field.update();
+                        } else {
+                            gradient_field::set_obstacles_ref(&model.obstacles);
+                            
+                            model.gradient_field = Some(gradient_field::GradientWire::new(
+                                gradient_function,
+                                model.gradient_x_resolution,
+                                model.gradient_y_resolution,
+                                model.gradient_line_resolution
+                            ).with_color(nannou::color::rgb(0, 255, 255)));
+                        }
+                    }
+                }
             });
             
             ui.collapsing("Models", |ui| {
@@ -120,7 +157,7 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                         
                         if ui.selectable_label(is_selected, label).clicked() {
                             model.selected_model_index = Some(i);
-                            model.selected_obstacle_index = None; // Deselect any obstacle
+                            model.selected_obstacle_index = None;
                         }
                     }
                 }
@@ -237,6 +274,14 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                             println!("Successfully created obstacle: {}", config.name);
                             model.selected_obstacle_index = Some(model.obstacles.len() - 1);
                             model.selected_model_index = None;
+                            
+                            if model.show_gradient_function {
+                                gradient_field::set_obstacles_ref(&model.obstacles);
+                                
+                                if let Some(gradient_field) = &mut model.gradient_field {
+                                    gradient_field.update();
+                                }
+                            }
                         },
                         Err(e) => { eprintln!("Failed to create obstacle {}: {}", config.name, e); }
                     }
@@ -324,12 +369,22 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                             
                                 selected_obstacle.model.config.position = position;
                                 selected_obstacle.model.position_at(Position::new(delta_x, delta_y, delta_z));
+                                
+                                position_changed = true;
                             }
                         }
                         
                         if delete_clicked {
                             model.obstacles.remove(index);
                             model.selected_obstacle_index = None;
+                        }
+                        
+                        if (radius_changed || position_changed || delete_clicked) && model.show_gradient_function {
+                            gradient_field::set_obstacles_ref(&model.obstacles);
+                            
+                            if let Some(gradient_field) = &mut model.gradient_field {
+                                gradient_field.update();
+                            }
                         }
                     }
                 }
@@ -418,6 +473,15 @@ fn model(app: &App) -> AppModel {
     let models = Vec::new();
     let obstacles = Vec::new();
     
+    gradient_field::set_obstacles_ref(&obstacles);
+    
+    let gradient_field = Some(gradient_field::GradientWire::new(
+        gradient_field::obstacle_sum,
+        0.5,
+        0.5,
+        0.5
+    ).with_color(nannou::color::rgb(0, 255, 255)));
+    
     AppModel {
         _window: window_id,
         camera_position: Position::new(0.0, -2.0, 0.0),
@@ -438,10 +502,14 @@ fn model(app: &App) -> AppModel {
         selected_obstacle_index: None,
         create_as_obstacle: false,
         
-        // Initialize new obstacle fields
         new_obstacle_name: String::from("robot_base"),
         new_obstacle_radius: 1.0,
         new_obstacle_position: Position::new(0.0, 0.0, 0.0),
+        
+        gradient_field,
+        gradient_x_resolution: 0.5,
+        gradient_y_resolution: 0.5,
+        gradient_line_resolution: 0.5,
     }
 }
 
@@ -465,6 +533,28 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
         let draw_start: Vec2 = point_on_canvas(cam_pos_start);
         let draw_end: Vec2 = point_on_canvas(cam_pos_end);
         draw.line().start(draw_start).end(draw_end).color(wire.color);
+    }
+    
+    if model.show_gradient_function {
+        if let Some(gradient_field) = &model.gradient_field {
+            for wire in gradient_field.get_all_wires() {
+                let cam_pos_start: Position = to_cam_coords(
+                    wire.start,
+                    model.camera_position,
+                    model.direction,
+                    model.rotation_y,
+                );
+                let cam_pos_end: Position = to_cam_coords(
+                    wire.end,
+                    model.camera_position,
+                    model.direction,
+                    model.rotation_y,
+                );
+                let draw_start: Vec2 = point_on_canvas(cam_pos_start);
+                let draw_end: Vec2 = point_on_canvas(cam_pos_end);
+                draw.line().start(draw_start).end(draw_end).color(wire.color);
+            }
+        }
     }
     
     for loaded_model in &model.models {
@@ -503,7 +593,6 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
             );
             let draw_start: Vec2 = point_on_canvas(cam_pos_start);
             let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-            // Use a different color for obstacles (GREEN)
             draw.line().start(draw_start).end(draw_end).color(GREEN);
         }
     }
