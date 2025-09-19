@@ -18,7 +18,7 @@ pub fn obstacle_sum(x: f32, y: f32) -> f32 {
             let mut sum = 0.0;
             
             for obstacle in obstacles {
-                sum += obstacle.gaussian_field_function(pos);
+                sum += obstacle.cosine_field_function(pos);
             }
             
             return sum;
@@ -80,7 +80,7 @@ impl GradientWire {
     
     pub fn get_all_wires(&self) -> Vec<Wire> {
         let mut all_wires = Vec::new();
-        
+
         for wire_set in &self.x_wires {
             for wire in wire_set {
                 all_wires.push(*wire);
@@ -118,7 +118,7 @@ fn generate_gradient_wires(gradient_func: fn(f32,f32) -> f32, x_resolution: f32,
     let mut x_wires: Vec<Vec<Wire>> = Vec::new();
     let mut y_wires: Vec<Vec<Wire>> = Vec::new();
     
-    let safe_x_resolution = x_resolution.max(0.01); // prevent 0.0
+    let safe_x_resolution = x_resolution.max(0.01);
     let safe_y_resolution = y_resolution.max(0.01);
     let safe_line_resolution = line_resolution.max(0.01);
     

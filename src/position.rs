@@ -32,4 +32,8 @@ impl Position {
         (self.y - other.y).abs() < EPSILON &&
         (self.z - other.z).abs() < EPSILON
     }
+
+    pub fn distance_to(&self, other: &Position) -> f32 {
+        ((self.x - other.x).powf(2.0) + (self.y - other.y).powf(2.0)).sqrt()
+    }
 }

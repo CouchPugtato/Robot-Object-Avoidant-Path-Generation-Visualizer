@@ -7,11 +7,15 @@ mod field;
 mod obstacle;
 mod position;
 mod gradient_field;
+mod robot;
+mod target_position;
 
 use model::{Model, ModelConfig};
 use crate::position::Position;
 use crate::field::*;
 use crate::obstacle::Obstacle;
+use crate::robot::Robot;
+use crate::target_position::TargetPosition;
 
 const SPEED: f64 = 3.0;
 const FOV: f32 = PI / 2.0;
@@ -31,6 +35,8 @@ struct AppModel {
     rotation_y: f32,
     models: Vec<Model>,
     obstacles: Vec<Obstacle>,
+    robot: Option<Robot>,
+    target_position: TargetPosition,
     egui: Egui,
 
     camera_speed: f32,
@@ -38,6 +44,12 @@ struct AppModel {
     show_path: bool,
     show_points: bool,
     show_gradient_function: bool,
+    path_segments: usize,
+    points_to_generate: usize,
+    
+    robot_velocity_x: f32,
+    robot_velocity_y: f32,
+    robot_target_speed: f32,
 
     new_model_name: String,
     new_model_scale: f32,
@@ -59,6 +71,10 @@ struct AppModel {
 
 
 fn update(app: &App, model: &mut AppModel, update: Update) {
+    if let Some(robot) = &mut model.robot {
+        robot.update_position(update.since_last.as_secs_f32());
+    }
+    
     let ctx = model.egui.begin_frame();
     
     // ui side panel
@@ -104,136 +120,6 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                 }
             });
             
-            ui.collapsing("Models", |ui| {
-                // new model
-                ui.heading("Create New Model");
-                
-                ui.horizontal(|ui| {
-                    ui.label("Model Name:");
-                    ui.text_edit_singleline(&mut model.new_model_name);
-                });
-                
-                ui.add(egui::Slider::new(&mut model.new_model_scale, 0.1..=10.0).text("Scale"));
-                
-                // model position controls
-                ui.label("Position:");
-                ui.horizontal(|ui| {
-                    ui.label("X:");
-                    ui.add(egui::DragValue::new(&mut model.new_model_position.x).speed(0.1));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Y:");
-                    ui.add(egui::DragValue::new(&mut model.new_model_position.y).speed(0.1));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Z:");
-                    ui.add(egui::DragValue::new(&mut model.new_model_position.z).speed(0.1));
-                });
-                
-                if ui.button("Add Model").clicked() {
-                    let config = ModelConfig {
-                        name: model.new_model_name.clone(),
-                        position: model.new_model_position,
-                        scale: model.new_model_scale
-                    };
-                    
-                    match Model::from_config(&config) {
-                        Ok(loaded_model) => {
-                            model.models.push(loaded_model);
-                            println!("Successfully loaded model: {}", config.name);
-                            model.selected_model_index = Some(model.models.len() - 1);
-                        },
-                        Err(e) => { eprintln!("Failed to load model {}: {}", config.name, e); }
-                    }
-                }
-                
-                if !model.models.is_empty() {
-                    ui.separator();
-                    ui.heading("Existing Models");
-                    
-                    for (i, loaded_model) in model.models.iter_mut().enumerate() {
-                        let is_selected = model.selected_model_index == Some(i);
-                        let label = format!("Model {}: {}", i + 1, loaded_model.config.name);
-                        
-                        if ui.selectable_label(is_selected, label).clicked() {
-                            model.selected_model_index = Some(i);
-                            model.selected_obstacle_index = None;
-                        }
-                    }
-                }
-                
-                // edit selected model
-                if let Some(index) = model.selected_model_index {
-                    if index < model.models.len() {
-                        let mut current_scale = 1.0;
-                        let mut current_position = Position::new(0.0, 0.0, 0.0);
-                        
-                        if let Some(selected_model) = model.models.get(index) {
-                            current_scale = selected_model.config.scale;
-                            current_position = selected_model.config.position;
-                        }
-                        
-                        ui.separator();
-                        ui.heading("Edit Selected Model");
-                        
-                        // scale control
-                        let mut scale = current_scale;
-                        let scale_changed = ui.add(egui::Slider::new(&mut scale, 0.1..=10.0).text("Scale")).changed();
-                        
-                        // position controls
-                        ui.label("Position:");
-                        let mut position = current_position;
-                        let mut position_changed = false;
-                        
-                        ui.horizontal(|ui| {
-                            ui.label("X:");
-                            if ui.add(egui::DragValue::new(&mut position.x).speed(0.1)).changed() {
-                                position_changed = true;
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Y:");
-                            if ui.add(egui::DragValue::new(&mut position.y).speed(0.1)).changed() {
-                                position_changed = true;
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Z:");
-                            if ui.add(egui::DragValue::new(&mut position.z).speed(0.1)).changed() {
-                                position_changed = true;
-                            }
-                        });
-                        
-                        let delete_clicked = ui.button("Delete Model").clicked();
-                        
-                        if let Some(selected_model) = model.models.get_mut(index) {
-                            if scale_changed {
-                                let old_position = selected_model.config.position;
-                                selected_model.config.scale = scale;
-                                
-                                selected_model.position_at(Position::new(-old_position.x, -old_position.y, -old_position.z));
-                                
-                                selected_model.scale(scale);
-                                selected_model.position_at(old_position);
-                            }
-                            
-                            if position_changed {
-                                let delta_x = position.x - selected_model.config.position.x;
-                                let delta_y = position.y - selected_model.config.position.y;
-                                let delta_z = position.z - selected_model.config.position.z;
-                            
-                                selected_model.config.position = position;
-                                selected_model.position_at(Position::new(delta_x, delta_y, delta_z));
-                            }
-                        }
-                        
-                        if delete_clicked {
-                            model.models.remove(index);
-                            model.selected_model_index = None;
-                        }
-                    }
-                }
-            });
             
             // obstacles section
             ui.collapsing("Obstacles", |ui| {
@@ -319,7 +205,7 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                         ui.separator();
                         ui.heading("Edit Selected Obstacle");
                         
-                        // radius control
+                        // radius controls
                         let mut radius = current_radius;
                         let radius_changed = ui.add(egui::Slider::new(&mut radius, 0.1..=5.0).text("Radius")).changed();
                         
@@ -350,6 +236,8 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                         let delete_clicked = ui.button("Delete Obstacle").clicked();
                         
                         if let Some(selected_obstacle) = model.obstacles.get_mut(index) {
+                            let mut properties_changed = false;
+                            
                             if radius_changed {
                                 selected_obstacle.set_radius(radius);
                                 
@@ -360,6 +248,8 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                                 selected_obstacle.model.position_at(Position::new(-old_position.x, -old_position.y, -old_position.z));
                                 selected_obstacle.model.scale(radius * 2.0);
                                 selected_obstacle.model.position_at(old_position);
+                                
+                                properties_changed = true;
                             }
                             
                             if position_changed {
@@ -370,7 +260,22 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                                 selected_obstacle.model.config.position = position;
                                 selected_obstacle.model.position_at(Position::new(delta_x, delta_y, delta_z));
                                 
-                                position_changed = true;
+                                properties_changed = true;
+                            }
+                            
+                            if properties_changed {
+                                if model.show_gradient_function {
+                                    gradient_field::set_obstacles_ref(&model.obstacles);
+                                    
+                                    if let Some(gradient_field) = &mut model.gradient_field {
+                                        gradient_field.update();
+                                    }
+                                }
+                                
+                                if let Some(robot) = &mut model.robot {
+                                    robot.generate_path(&model.target_position.get_position(), model.path_segments, &model.obstacles);
+                                    robot.optimize_path(&model.obstacles);
+                                }
                             }
                         }
                         
@@ -390,9 +295,186 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                 }
             });
             
-            ui.collapsing("Speed Settings", |ui| {
-                ui.add(egui::Slider::new(&mut model.camera_speed, 0.5..=10.0).text("Camera Speed"));
-                ui.add(egui::Slider::new(&mut model.rotation_speed, 0.1..=5.0).text("Rotation Speed"));
+            ui.collapsing("Target Position", |ui| {
+                ui.heading("Edit Target Position");
+                
+                ui.label("Position:");
+                let mut position = model.target_position.get_position();
+                let mut position_changed = false;
+                
+                ui.horizontal(|ui| {
+                    ui.label("X:");
+                    if ui.add(egui::DragValue::new(&mut position.x).speed(0.1)).changed() {
+                        position_changed = true;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Y:");
+                    if ui.add(egui::DragValue::new(&mut position.y).speed(0.1)).changed() {
+                        position_changed = true;
+                    }
+                });
+                
+                if position_changed {
+                    model.target_position.set_position(position);
+                    
+                    if let Some(robot) = &mut model.robot {
+                        robot.generate_path(&position, model.path_segments, &model.obstacles);
+                        robot.optimize_path(&model.obstacles);
+                    }
+                }
+                
+                ui.separator();
+                ui.heading("Robot Movement");
+                
+                let mut velocity_changed = false;
+                let mut speed_changed = false;
+                
+                ui.horizontal(|ui| {
+                    ui.label("X Velocity:");
+                    if ui.add(egui::Slider::new(&mut model.robot_velocity_x, -5.0..=5.0).text("X")).changed() {
+                        velocity_changed = true;
+                    }
+                });
+                
+                ui.horizontal(|ui| {
+                    ui.label("Y Velocity:");
+                    if ui.add(egui::Slider::new(&mut model.robot_velocity_y, -5.0..=5.0).text("Y")).changed() {
+                        velocity_changed = true;
+                    }
+                });
+                
+                ui.horizontal(|ui| {
+                    ui.label("Target Speed:");
+                    if ui.add(egui::Slider::new(&mut model.robot_target_speed, 0.1..=10.0).text("Speed")).changed() {
+                        speed_changed = true;
+                    }
+                });
+                
+                if velocity_changed {
+                    if let Some(robot) = &mut model.robot {
+                        robot.set_velocity(model.robot_velocity_x, model.robot_velocity_y);
+                    }
+                }
+                
+                if speed_changed {
+                    if let Some(robot) = &mut model.robot {
+                        robot.set_target_speed(model.robot_target_speed);
+                    }
+                }
+                
+                ui.separator();
+                ui.heading("Path Settings");
+                
+                ui.checkbox(&mut model.show_path, "Show Path");
+                
+                let mut segments = model.path_segments;
+                if ui.add(egui::Slider::new(&mut segments, 5..=200).text("Path Segments")).changed() {
+                    model.path_segments = segments;
+                    
+                    if let Some(robot) = &mut model.robot {
+                        let target_pos = model.target_position.get_position();
+                        robot.generate_path(&target_pos, model.path_segments, &model.obstacles);
+                        robot.optimize_path(&model.obstacles);
+                    }
+                }
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Generate Path").clicked() {
+                        if let Some(robot) = &mut model.robot {
+                            let target_pos = model.target_position.get_position();
+                            robot.generate_path(&target_pos, model.path_segments, &model.obstacles);
+                            robot.optimize_path(&model.obstacles);
+                            
+                            if model.models.iter().any(|m| m.config.name == "point") {
+                                model.models.retain(|m| m.config.name != "point");
+                                
+                                if robot.path_points.len() > 1 && model.points_to_generate > 0 {
+                                    let total_points = robot.path_points.len();
+                                    let step = (total_points - 1) as f32 / model.points_to_generate as f32;
+                                    
+                                    for i in 0..model.points_to_generate {
+                                        let index = (i as f32 * step).round() as usize;
+                                        if index < total_points {
+                                            let path_point = &robot.path_points[index];
+                                            
+                                            let position = path_point.position;
+                                            
+                                            let config = ModelConfig {
+                                                name: "point".to_string(),
+                                                position: position,
+                                                scale: 0.05,
+                                            };
+                                            
+                                            match Model::from_config(&config) {
+                                                Ok(point_model) => {
+                                                    model.models.push(point_model);
+                                                },
+                                                Err(e) => { eprintln!("Failed to create point model: {}", e); }
+                                            }
+                                        }
+                                    }
+                                    println!("Updated {} points after path optimization", model.points_to_generate);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if ui.button("Follow Path").clicked() {
+                        if let Some(robot) = &mut model.robot {
+                            robot.current_path_index = 0;
+                        }
+                    }
+                });
+                
+                let mut points = model.points_to_generate;
+                if ui.add(egui::Slider::new(&mut points, 1..=200).text("Points to Generate")).changed() {
+                    model.points_to_generate = points;
+                }
+                
+                if ui.button("Place Points Along Path").clicked() {
+                    model.models.retain(|m| m.config.name != "point");
+                    
+                    if let Some(robot) = &model.robot {
+                        if robot.path_points.len() > 1 && model.points_to_generate > 0 {
+                            let total_points = robot.path_points.len();
+                            let step = (total_points - 1) as f32 / model.points_to_generate as f32;
+                            
+                            for i in 0..model.points_to_generate {
+                                let index = (i as f32 * step).round() as usize;
+                                if index < total_points {
+                                    let path_point = &robot.path_points[index];
+                                    
+                                    let mut position = path_point.position;
+                                    
+                                    let mut height = 0.0;
+                                    for obstacle in &model.obstacles {
+                                        height += obstacle.cosine_field_function(position);
+                                    }
+                                    position.z = height;
+                                    
+                                    let config = ModelConfig {
+                                        name: "point".to_string(),
+                                        position: position,
+                                        scale: 0.05, 
+                                    };
+                                    
+                                    match Model::from_config(&config) {
+                                        Ok(point_model) => {
+                                            model.models.push(point_model);
+                                        },
+                                        Err(e) => { eprintln!("Failed to create point model: {}", e); }
+                                    }
+                                }
+                            }
+                            println!("Placed {} points along path", model.points_to_generate);
+                        }
+                    }
+                }
+                
+                if ui.button("Clear All Path Points").clicked() {
+                    model.models.retain(|m| m.config.name != "point");
+                }
             });
             
             ui.separator();
@@ -473,13 +555,29 @@ fn model(app: &App) -> AppModel {
     let models = Vec::new();
     let obstacles = Vec::new();
     
+    let mut robot = match Robot::create_default() {
+        Ok(robot) => Some(robot),
+        Err(e) => {
+            eprintln!("Failed to load robot model: {}", e);
+            None
+        }
+    };
+    
+    let target_position = TargetPosition::create_default();
+    
+    if let Some(robot_ref) = &mut robot {
+        let target_pos = target_position.get_position();
+        robot_ref.generate_path(&target_pos, 10, &obstacles);
+        robot_ref.optimize_path(&obstacles);
+    }
+    
     gradient_field::set_obstacles_ref(&obstacles);
     
     let gradient_field = Some(gradient_field::GradientWire::new(
         gradient_field::obstacle_sum,
-        0.5,
-        0.5,
-        0.5
+        3.0,
+        3.0,
+        0.12
     ).with_color(nannou::color::rgb(0, 255, 255)));
     
     AppModel {
@@ -489,14 +587,22 @@ fn model(app: &App) -> AppModel {
         rotation_y: 0.0,
         models,
         obstacles,
+        robot,
+        target_position,
         egui,
         camera_speed: SPEED as f32,
         rotation_speed: 1.0,
         show_path: true,
         show_points: true,
         show_gradient_function: true,
-        new_model_name: String::from("cube"),
-        new_model_scale: 1.0, // default
+        path_segments: 10,
+        points_to_generate: 5, // default number of points to generate
+        
+        robot_velocity_x: 0.0,
+         robot_velocity_y: 0.0,
+         robot_target_speed: 2.0,
+         new_model_name: String::from("cube"),
+        new_model_scale: 1.0,
         new_model_position: Position::new(0.0, 0.0, 0.0),
         selected_model_index: None,
         selected_obstacle_index: None,
@@ -533,6 +639,26 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
         let draw_start: Vec2 = point_on_canvas(cam_pos_start);
         let draw_end: Vec2 = point_on_canvas(cam_pos_end);
         draw.line().start(draw_start).end(draw_end).color(wire.color);
+    }
+    
+    if let Some(robot) = &model.robot {
+        for wire in &robot.model.wires {
+            let cam_pos_start: Position = to_cam_coords(
+                wire.start,
+                model.camera_position,
+                model.direction,
+                model.rotation_y,
+            );
+            let cam_pos_end: Position = to_cam_coords(
+                wire.end,
+                model.camera_position,
+                model.direction,
+                model.rotation_y,
+            );
+            let draw_start: Vec2 = point_on_canvas(cam_pos_start);
+            let draw_end: Vec2 = point_on_canvas(cam_pos_end);
+            draw.line().start(draw_start).end(draw_end).color(nannou::color::rgb::<u8>(0, 255, 0));
+        }
     }
     
     if model.show_gradient_function {
@@ -594,6 +720,46 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
             let draw_start: Vec2 = point_on_canvas(cam_pos_start);
             let draw_end: Vec2 = point_on_canvas(cam_pos_end);
             draw.line().start(draw_start).end(draw_end).color(GREEN);
+        }
+    }
+    
+    for wire in model.target_position.get_wires() {
+        let cam_pos_start: Position = to_cam_coords(
+            wire.start,
+            model.camera_position,
+            model.direction,
+            model.rotation_y,
+        );
+        let cam_pos_end: Position = to_cam_coords(
+            wire.end,
+            model.camera_position,
+            model.direction,
+            model.rotation_y,
+        );
+        let draw_start: Vec2 = point_on_canvas(cam_pos_start);
+        let draw_end: Vec2 = point_on_canvas(cam_pos_end);
+        draw.line().start(draw_start).end(draw_end).color(wire.color);
+    }
+    
+    if model.show_path && model.robot.is_some() {
+        if let Some(robot) = &model.robot {
+            for wire in robot.get_path_wires() {
+                let cam_pos_start: Position = to_cam_coords(
+                    wire.start,
+                    model.camera_position,
+                    model.direction,
+                    model.rotation_y,
+                );
+                let cam_pos_end: Position = to_cam_coords(
+                    wire.end,
+                    model.camera_position,
+                    model.direction,
+                    model.rotation_y,
+                );
+                let draw_start: Vec2 = point_on_canvas(cam_pos_start);
+                let draw_end: Vec2 = point_on_canvas(cam_pos_end);
+                draw.line().start(draw_start).end(draw_end).color(wire.color);
+            }
         }
     }
     
