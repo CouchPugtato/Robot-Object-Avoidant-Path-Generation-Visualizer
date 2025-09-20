@@ -45,7 +45,6 @@ struct AppModel {
     show_points: bool,
     show_gradient_function: bool,
     path_segments: usize,
-    points_to_generate: usize,
     
     robot_velocity_x: f32,
     robot_velocity_y: f32,
@@ -119,8 +118,7 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                     }
                 }
             });
-            
-            
+                        
             // obstacles section
             ui.collapsing("Obstacles", |ui| {
                 ui.heading("Create New Obstacle");
@@ -389,32 +387,24 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                             if model.models.iter().any(|m| m.config.name == "point") {
                                 model.models.retain(|m| m.config.name != "point");
                                 
-                                if robot.path_points.len() > 1 && model.points_to_generate > 0 {
-                                    let total_points = robot.path_points.len();
-                                    let step = (total_points - 1) as f32 / model.points_to_generate as f32;
-                                    
-                                    for i in 0..model.points_to_generate {
-                                        let index = (i as f32 * step).round() as usize;
-                                        if index < total_points {
-                                            let path_point = &robot.path_points[index];
-                                            
-                                            let position = path_point.position;
-                                            
-                                            let config = ModelConfig {
-                                                name: "point".to_string(),
-                                                position: position,
-                                                scale: 0.05,
-                                            };
-                                            
-                                            match Model::from_config(&config) {
-                                                Ok(point_model) => {
-                                                    model.models.push(point_model);
-                                                },
-                                                Err(e) => { eprintln!("Failed to create point model: {}", e); }
-                                            }
+                                if robot.path_points.len() > 1 {
+                                    for path_point in &robot.path_points {
+                                        let position = path_point.position;
+                                        
+                                        let config = ModelConfig {
+                                            name: "point".to_string(),
+                                            position: position,
+                                            scale: 0.05,
+                                        };
+                                        
+                                        match Model::from_config(&config) {
+                                            Ok(point_model) => {
+                                                model.models.push(point_model);
+                                            },
+                                            Err(e) => { eprintln!("Failed to create point model: {}", e); }
                                         }
                                     }
-                                    println!("Updated {} points after path optimization", model.points_to_generate);
+                                    println!("Updated {} points after path optimization", robot.path_points.len());
                                 }
                             }
                         }
@@ -427,47 +417,35 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                     }
                 });
                 
-                let mut points = model.points_to_generate;
-                if ui.add(egui::Slider::new(&mut points, 1..=200).text("Points to Generate")).changed() {
-                    model.points_to_generate = points;
-                }
                 
                 if ui.button("Place Points Along Path").clicked() {
                     model.models.retain(|m| m.config.name != "point");
                     
                     if let Some(robot) = &model.robot {
-                        if robot.path_points.len() > 1 && model.points_to_generate > 0 {
-                            let total_points = robot.path_points.len();
-                            let step = (total_points - 1) as f32 / model.points_to_generate as f32;
-                            
-                            for i in 0..model.points_to_generate {
-                                let index = (i as f32 * step).round() as usize;
-                                if index < total_points {
-                                    let path_point = &robot.path_points[index];
-                                    
-                                    let mut position = path_point.position;
-                                    
-                                    let mut height = 0.0;
-                                    for obstacle in &model.obstacles {
-                                        height += obstacle.cosine_field_function(position);
-                                    }
-                                    position.z = height;
-                                    
-                                    let config = ModelConfig {
-                                        name: "point".to_string(),
-                                        position: position,
-                                        scale: 0.05, 
-                                    };
-                                    
-                                    match Model::from_config(&config) {
-                                        Ok(point_model) => {
-                                            model.models.push(point_model);
-                                        },
-                                        Err(e) => { eprintln!("Failed to create point model: {}", e); }
-                                    }
+                        if robot.path_points.len() > 1 {
+                            for path_point in &robot.path_points {
+                                let mut position = path_point.position;
+                                
+                                let mut height = 0.0;
+                                for obstacle in &model.obstacles {
+                                    height += obstacle.cosine_field_function(position);
+                                }
+                                position.z = height;
+                                
+                                let config = ModelConfig {
+                                    name: "point".to_string(),
+                                    position: position,
+                                    scale: 0.05,
+                                };
+                                
+                                match Model::from_config(&config) {
+                                    Ok(point_model) => {
+                                        model.models.push(point_model);
+                                    },
+                                    Err(e) => { eprintln!("Failed to create point model: {}", e); }
                                 }
                             }
-                            println!("Placed {} points along path", model.points_to_generate);
+                            println!("Placed {} points along path", robot.path_points.len());
                         }
                     }
                 }
@@ -596,7 +574,6 @@ fn model(app: &App) -> AppModel {
         show_points: true,
         show_gradient_function: true,
         path_segments: 10,
-        points_to_generate: 5, // default number of points to generate
         
         robot_velocity_x: 0.0,
          robot_velocity_y: 0.0,

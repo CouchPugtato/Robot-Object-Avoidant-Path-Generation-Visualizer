@@ -28,7 +28,7 @@ impl std::ops::DerefMut for Obstacle {
 const DEFAULT_BUFFER_RADIUS: f32 = 0.2; 
 const DEFAULT_ROBOT_RADIUS: f32 = 0.5;
 const EPS: f32 = 0.00005;
-const ADJUST_RATE: f32 = 0.1;
+const ADJUST_RATE: f32 = 0.001;
 
 impl Obstacle {
     

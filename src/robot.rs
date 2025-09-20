@@ -66,8 +66,8 @@ pub const ROBOT_MODEL_NAME: &str = "robot_base";
 pub const ROBOT_SCALE: f32 = 1.0;
 
 pub const MIN_ADJUST_RATE: f32 = 0.0001;
-pub const MAX_ITERATIONS: usize = 1000;
-pub const PATH_OPTIMIZATION_THRESHOLD: f32 = 0.01;
+pub const MAX_ITERATIONS: usize = 2000;
+pub const PATH_OPTIMIZATION_THRESHOLD: f32 = 0.001;
 
 impl Robot {
     pub fn new(model: Model) -> Robot {
@@ -108,11 +108,11 @@ impl Robot {
             wire.end.y += dy;
         }
         
-        println!("Robot position: ({}, {}), Velocity: ({}, {})", 
-                 self.model.config.position.x, 
-                 self.model.config.position.y,
-                 self.velocity_x,
-                 self.velocity_y);
+        // println!("Robot position: ({}, {}), Velocity: ({}, {})", 
+        //          self.model.config.position.x, 
+        //          self.model.config.position.y,
+        //          self.velocity_x,
+        //          self.velocity_y);
     }
     
     pub fn create_default() -> Result<Self, Box<dyn std::error::Error>> {
@@ -161,11 +161,16 @@ impl Robot {
     }
     
     pub fn get_path_wires(&self) -> Vec<Wire> {
-        let mut wires = Vec::with_capacity(self.path_points.len() - 1);
+        if self.path_points.len() < 2 {
+            return Vec::new();
+        }
         
-        for i in 0..self.path_points.len() - 1 {
-            let start = self.path_points[i].position;
-            let end = self.path_points[i + 1].position;
+        let spline_points = self.generate_catmull_rom_spline();
+        let mut wires = Vec::with_capacity(spline_points.len() - 1);
+        
+        for i in 0..spline_points.len() - 1 {
+            let start = spline_points[i];
+            let end = spline_points[i + 1];
             
             wires.push(Wire {
                 start,
@@ -177,10 +182,67 @@ impl Robot {
         wires
     }
     
-    fn is_path_optimized(&self) -> bool {
+    fn generate_catmull_rom_spline(&self) -> Vec<Position> {
+        let segments = self.path_points.len();
+
+        if segments < 2 {
+            return Vec::new();
+        }
+        
+        let mut result = Vec::new();
+        let n = self.path_points.len();
+        
+        result.push(self.path_points[0].position);
+        
+        for i in 0..n-1 {
+            let p0 = if i == 0 { self.path_points[0].position } else { self.path_points[i-1].position };
+            let p1 = self.path_points[i].position;
+            let p2 = self.path_points[i+1].position;
+            let p3 = if i+2 >= n { self.path_points[n-1].position } else { self.path_points[i+2].position };
+            
+            for j in 1..=segments {
+                let t = j as f32 / segments as f32;
+                let point = self.catmull_rom_point(p0, p1, p2, p3, t);
+                result.push(point);
+            }
+        }
+        
+        result
+    }
+    
+    fn catmull_rom_point(&self, p0: Position, p1: Position, p2: Position, p3: Position, t: f32) -> Position {
+        // matrix coefficients
+        let t2 = t * t;
+        let t3 = t2 * t;
+        
+        // blending functions
+        let b0 = 0.5 * (-t3 + 2.0*t2 - t);
+        let b1 = 0.5 * (3.0*t3 - 5.0*t2 + 2.0);
+        let b2 = 0.5 * (-3.0*t3 + 4.0*t2 + t);
+        let b3 = 0.5 * (t3 - t2);
+        
+        // calculate the interpolated point
+        let x = b0 * p0.x + b1 * p1.x + b2 * p2.x + b3 * p3.x;
+        let y = b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y;
+        let z = b0 * p0.z + b1 * p1.z + b2 * p2.z + b3 * p3.z;
+        
+        Position::new(x, y, z)
+    }
+    
+    fn is_path_optimized(&self, obstacles: &[Obstacle]) -> bool {
         for i in 1..self.path_points.len() - 1 {
             if self.path_points[i].get_height() > PATH_OPTIMIZATION_THRESHOLD {
                 return false;
+            }
+            
+            for obstacle in obstacles {
+                let obstacle_pos = obstacle.model.config.position;
+                let min_safe_distance = obstacle.get_radius() + 0.1; // Add small buffer
+                
+                let dist = self.path_points[i].position.distance_to(&obstacle_pos);
+                if dist < min_safe_distance {
+                    return false;
+                }
             }
         }
         true
@@ -197,12 +259,58 @@ impl Robot {
         let second_point = &self.path_points[1].position;
         let original_step_distance = first_point.distance_to(second_point);
         
-        while !self.is_path_optimized() && iterations < MAX_ITERATIONS {
+        while !self.is_path_optimized(obstacles) && iterations < MAX_ITERATIONS {
             iterations += 1;
             self.optimize_path_single_iteration(obstacles);
             self.clean_path(original_step_distance);
         }
+        
+        for point in &mut self.path_points {
+            point.position.z = 0.0;
+        }
 
+        if iterations >= MAX_ITERATIONS && !self.is_path_optimized(obstacles) {
+            println!("Warning: Path optimization did not converge after {} iterations", MAX_ITERATIONS);
+            
+            for i in 1..self.path_points.len() - 1 {
+                if self.path_points[i].get_height() > PATH_OPTIMIZATION_THRESHOLD {
+                    let mut nearest_obstacle_idx = 0;
+                    let mut min_dist = f32::MAX;
+                    
+                    for (idx, obstacle) in obstacles.iter().enumerate() {
+                        let dist = self.path_points[i].position.distance_to(&obstacle.model.config.position);
+                        if dist < min_dist {
+                            min_dist = dist;
+                            nearest_obstacle_idx = idx;
+                        }
+                    }
+                    
+                    if obstacles.len() > 0 {
+                        let obstacle_pos = obstacles[nearest_obstacle_idx].model.config.position;
+                        let point_pos = &mut self.path_points[i].position;
+                        
+                        let dx = point_pos.x - obstacle_pos.x;
+                        let dy = point_pos.y - obstacle_pos.y;
+                        let dist = (dx*dx + dy*dy).sqrt();
+                        
+                        if dist > 0.001 {
+                            let nx = dx / dist;
+                            let ny = dy / dist;
+                            
+                            point_pos.x += nx * 0.5;
+                            point_pos.y += ny * 0.5;
+                            
+                            let mut height = 0.0;
+                            for obstacle in obstacles {
+                                height += obstacle.cosine_field_function(*point_pos);
+                            }
+                            self.path_points[i].set_height(height);
+                        }
+                    }
+                }
+            }
+        }
+        
         println!("Path optimized in {} iterations", iterations);
     }
     
@@ -215,16 +323,46 @@ impl Robot {
         
         for i in 1..self.path_points.len() - 1 {
             let point = &mut self.path_points[i];
+            let mut too_close_to_obstacle = false;
             
-            if point.get_height() > PATH_OPTIMIZATION_THRESHOLD {
+            for obstacle in obstacles {
+                let obstacle_pos = obstacle.model.config.position;
+                let min_safe_distance = obstacle.get_radius() + 0.1;
+                
+                let dist = point.position.distance_to(&obstacle_pos);
+                if dist < min_safe_distance {
+                    too_close_to_obstacle = true;
+                    break;
+                }
+            }
+            
+            if point.get_height() > PATH_OPTIMIZATION_THRESHOLD || too_close_to_obstacle {
                 all_points_optimized = false;
                 let mut total_dx = 0.0;
                 let mut total_dy = 0.0;
                 
                 for obstacle in obstacles {
                     let gradient = obstacle.cosine_gradient_function(point.position);
-                    total_dx -= gradient[0];
-                    total_dy -= gradient[1];
+                    
+                    let obstacle_pos = obstacle.model.config.position;
+                    let dist = point.position.distance_to(&obstacle_pos);
+                    let min_safe_distance = obstacle.get_radius() + 0.1;
+                    
+                    if dist < min_safe_distance {
+                        let dx = point.position.x - obstacle_pos.x;
+                        let dy = point.position.y - obstacle_pos.y;
+                        let dist = (dx*dx + dy*dy).sqrt();
+                        
+                        if dist > 0.001 {
+                            let nx = dx / dist;
+                            let ny = dy / dist;
+                            total_dx += nx * 0.5;
+                            total_dy += ny * 0.5;
+                        }
+                    } else {
+                        total_dx -= gradient[0];
+                        total_dy -= gradient[1];
+                    }
                 }
                 
                 if total_dx.abs() < MIN_ADJUST_RATE && total_dy.abs() < MIN_ADJUST_RATE {
@@ -251,8 +389,8 @@ impl Robot {
     }
 
     pub fn clean_path(&mut self, original_step_distance: f32) -> bool {
-        // remove points closer together than half original step distance, avoid clumping
-        let threshold = original_step_distance*2.0;
+        // remove points closer together than 1.3x step distance, avoid clumping
+        let threshold = original_step_distance * 1.3;
         let mut i = 1;
         let mut removed_any = false;
         
