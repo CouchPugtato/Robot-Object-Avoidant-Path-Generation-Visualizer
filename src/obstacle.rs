@@ -25,7 +25,7 @@ impl std::ops::DerefMut for Obstacle {
     }
 }
 
-const DEFAULT_BUFFER_RADIUS: f32 = 0.2; 
+const DEFAULT_BUFFER_RADIUS: f32 = 0.8; 
 const DEFAULT_ROBOT_RADIUS: f32 = 0.5;
 const EPS: f32 = 0.00005;
 const ADJUST_RATE: f32 = 0.001;
@@ -87,6 +87,10 @@ impl Obstacle {
         let center: Position = self.model.config.position;
         let dist: f32 = pos.distance_to(&center);
         
+        if dist > self.calculation_radius * 2.0 {
+            return 0.0;
+        }
+        
         self.b * E.powf(-(dist/self.calculation_radius))
     }
     
@@ -112,6 +116,11 @@ impl Obstacle {
         let center: Position = self.model.config.position;
         let dist_x: f32 = pos.x - center.x;
         let dist_y: f32 = pos.y - center.y;
+        let dist: f32 = (dist_x*dist_x + dist_y*dist_y).sqrt();
+        
+        if dist > self.calculation_radius * 2.0 {
+            return [0.0, 0.0];
+        }
         
         [ 2.0 * PI * dist_x / self.calculation_radius * E.powf(-(dist_x/self.calculation_radius)), 
           2.0 * PI * dist_y / self.calculation_radius * E.powf(-(dist_y/self.calculation_radius)) ]

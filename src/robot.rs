@@ -38,8 +38,10 @@ pub struct Robot {
     pub path_points: Vec<PathPoint>,
     pub velocity_x: f32,
     pub velocity_y: f32,
-    pub current_path_index: usize,
+    pub current_path_progress: f32,
     pub target_speed: f32,
+    pub follow_path: bool,
+    pub velocity_update_timer: f32,
 }
 
 impl std::ops::Deref for Robot {
@@ -76,8 +78,10 @@ impl Robot {
             path_points: Vec::new(),
             velocity_x: 0.0,
             velocity_y: 0.0,
-            current_path_index: 0,
+            current_path_progress: 0.0,
             target_speed: 2.0,
+            follow_path: false,
+            velocity_update_timer: 0.0,
         }
     }
     
@@ -90,6 +94,12 @@ impl Robot {
         self.target_speed = speed;
     }
     pub fn update_position(&mut self, dt: f32) {
+        self.velocity_update_timer += dt;
+        
+        if self.follow_path {
+            self.follow_path_with_dt(dt);
+        }
+        
         let new_x = self.model.config.position.x + self.velocity_x * dt;
         let new_y = self.model.config.position.y + self.velocity_y * dt;
         
@@ -107,12 +117,6 @@ impl Robot {
             wire.end.x += dx;
             wire.end.y += dy;
         }
-        
-        // println!("Robot position: ({}, {}), Velocity: ({}, {})", 
-        //          self.model.config.position.x, 
-        //          self.model.config.position.y,
-        //          self.velocity_x,
-        //          self.velocity_y);
     }
     
     pub fn create_default() -> Result<Self, Box<dyn std::error::Error>> {
@@ -132,7 +136,7 @@ impl Robot {
         
         self.path_points = Vec::with_capacity(segments_count + 2);
         
-        self.current_path_index = 0;
+        self.current_path_progress = 0.0;
         
         self.path_points.push(PathPoint::from_position(start));
         
@@ -227,6 +231,34 @@ impl Robot {
         let z = b0 * p0.z + b1 * p1.z + b2 * p2.z + b3 * p3.z;
         
         Position::new(x, y, z)
+    }
+    
+    /// returns the x and y coordinates for a point on a Catmull-Rom spline at t (0-1)
+    pub fn catmull_rom_spline(&self, t: f32) -> (f32, f32) {
+        if self.path_points.len() < 4 {
+            if self.path_points.is_empty() {
+                return (0.0, 0.0);
+            } else {
+                let pos = self.path_points[0].position;
+                return (pos.x, pos.y);
+            }
+        }
+        
+        let num_segments = self.path_points.len() - 3;
+        let segment_t = t * num_segments as f32;
+        let segment_idx = segment_t.floor() as usize;
+        let local_t = segment_t - segment_idx as f32;
+        
+        let segment_idx = segment_idx.min(num_segments - 1);
+        
+        let p0 = self.path_points[segment_idx].position;
+        let p1 = self.path_points[segment_idx + 1].position;
+        let p2 = self.path_points[segment_idx + 2].position;
+        let p3 = self.path_points[segment_idx + 3].position;
+        
+        let point = self.catmull_rom_point(p0, p1, p2, p3, local_t);
+        
+        (point.x, point.y)
     }
     
     fn is_path_optimized(&self, obstacles: &[Obstacle]) -> bool {
@@ -404,6 +436,77 @@ impl Robot {
         }
         
         removed_any
+    }
+
+    pub fn follow_path(&mut self) {
+        self.follow_path_with_dt(0.02); 
+    }
+    
+    pub fn follow_path_with_dt(&mut self, dt: f32) {
+        if self.current_path_progress >= 1.0 {
+            self.follow_path = false;
+            self.set_velocity(0.0, 0.0);
+            return;
+        }
+
+        if self.velocity_update_timer >= 0.02 {
+            let current_position = self.catmull_rom_spline(self.current_path_progress);
+            let mut d = 0.0;
+            let mut xv = 0.0;
+            let mut yv = 0.0;
+
+            let mut ci = 0.0;
+            let target_distance = self.target_speed * dt;
+            
+            if target_distance <= 0.001 {
+                ci = 0.001;
+                let focus_point = self.catmull_rom_spline(self.current_path_progress + ci);
+                xv = focus_point.0 - current_position.0;
+                yv = focus_point.1 - current_position.1;
+                d = (xv*xv + yv*yv).sqrt();
+            } else {
+                let max_iterations = 1000;
+                let mut iteration_count = 0;
+                
+                while d < target_distance && iteration_count < max_iterations {
+                    ci += 0.001;
+                    iteration_count += 1;
+
+                    let focus_point = self.catmull_rom_spline(self.current_path_progress + ci);
+                    xv = focus_point.0 - current_position.0;
+                    yv = focus_point.1 - current_position.1;
+        
+                    d = (xv*xv + yv*yv).sqrt();
+                    
+                    if iteration_count % 100 == 0 {
+                        println!("Path following: progress={:.3}, distance={:.3}/{:.3}, dt={:.3}", 
+                                 self.current_path_progress, d, target_distance, dt);
+                    }
+                    
+                    if self.current_path_progress + ci >= 1.0 {
+                        break;
+                    }
+                }
+                
+                if iteration_count >= max_iterations {
+                    println!("Warning: Max iterations reached in follow_path calculation");
+                }
+            }
+            
+            xv /= d;
+            yv /= d;
+
+            self.set_velocity(xv * self.target_speed, yv * self.target_speed);
+            
+            self.current_path_progress += ci;
+            if self.current_path_progress >= 1.0 {
+                self.current_path_progress = 1.0;
+                self.follow_path = false;
+                self.set_velocity(0.0, 0.0);
+            }
+            
+            self.velocity_update_timer = 0.0;
+        }
     }
 }
 

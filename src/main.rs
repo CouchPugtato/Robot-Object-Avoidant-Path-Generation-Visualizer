@@ -412,7 +412,7 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                     
                     if ui.button("Follow Path").clicked() {
                         if let Some(robot) = &mut model.robot {
-                            robot.current_path_index = 0;
+                            robot.follow_path = true;
                         }
                     }
                 });
@@ -515,6 +515,12 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
     if app.keys.down.contains(&Key::Right) { model.direction -= rot_step; }
     if app.keys.down.contains(&Key::Up) { model.rotation_y += rot_y_step; }
     if app.keys.down.contains(&Key::Down) { model.rotation_y -= rot_y_step; }
+
+    if app.keys.down.contains(&Key::Space) { 
+        if let Some(robot) = &mut model.robot {
+            robot.follow_path();
+        } 
+    }
 }
 
 fn model(app: &App) -> AppModel {
@@ -545,7 +551,7 @@ fn model(app: &App) -> AppModel {
     
     if let Some(robot_ref) = &mut robot {
         let target_pos = target_position.get_position();
-        robot_ref.generate_path(&target_pos, 10, &obstacles);
+        robot_ref.generate_path(&target_pos, 160, &obstacles);
         robot_ref.optimize_path(&obstacles);
     }
     
@@ -573,7 +579,7 @@ fn model(app: &App) -> AppModel {
         show_path: true,
         show_points: true,
         show_gradient_function: true,
-        path_segments: 10,
+        path_segments: 160,
         
         robot_velocity_x: 0.0,
          robot_velocity_y: 0.0,
@@ -586,7 +592,7 @@ fn model(app: &App) -> AppModel {
         create_as_obstacle: false,
         
         new_obstacle_name: String::from("robot_base"),
-        new_obstacle_radius: 1.0,
+        new_obstacle_radius: 0.6,
         new_obstacle_position: Position::new(0.0, 0.0, 0.0),
         
         gradient_field,
