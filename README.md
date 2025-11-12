@@ -24,7 +24,7 @@ This project uses transformed piecewise cosine field functions and gradient‑ba
   $$
   V_i(r) =
   \begin{cases}
-    \dfrac{b_i}{2}\,\cos\\left(\dfrac{\pi r}{b_i}\right), & 0 \le r \le R_{\text{calc},i} \\
+    \dfrac{b_i}{2}\,\cos\!\left(\dfrac{\pi r}{b_i}\right), & 0 \le r \le R_{\text{calc},i} \\
     0, & r > R_{\text{calc},i}
   \end{cases}
   \quad \text{with } b_i = \pi\,R_{\text{calc},i}.
