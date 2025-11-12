@@ -1,7 +1,6 @@
 # Robot Object‑Avoidant Path Generation Visualizer
 
-Math‑driven path planning simulation for robotics (think FIRST Robotics autonomous) with a live visualizer that shows obstacles, potential fields, and an optimized path from a start to a target.
-It is a simulation: a virtual environment to experiment with collision‑avoidant autonomous path planning.
+Simulation for FIRST robotics on collision avoidant autonomous path generation around dynamic obstacles.
 
 ## What This Is
 - A simulation: a virtual environment to experiment with collision‑avoidant path planning.
@@ -25,34 +24,34 @@ This project uses transformed piecewise cosine field functions and gradient‑ba
   $$
   V_i(r) =
   \begin{cases}
-    \dfrac{b_i}{2}\,\cos\!\left(\dfrac{\pi r}{b_i}\right), & 0 \le r \le R_{\text{calc},i} \\
+    \dfrac{b_i}{2}\,\cos\left(\dfrac{\pi r}{b_i}\right), & 0 \le r \le R_{\text{calc},i} \\
     0, & r > R_{\text{calc},i}
   \end{cases}
   \quad \text{with } b_i = \pi\,R_{\text{calc},i}.
   $$
 
-  where `r = \|p - c_i\|` and `R_{\text{calc},i} = r_{\text{obstacle}} + r_{\text{robot}} + r_{\text{buffer}}` scales the transform so the potential vanishes at the clearance boundary.
+  where $r = \|p - c_i\|$ and $R_{\text{calc},i} = r_{\text{obstacle}} + r_{\text{robot}} + r_{\text{buffer}}$ scales the transform so the field vanishes at the clearance boundary.
 
 - Gradient (repulsive direction): letting `\mathbf{e}_r = (p - c_i)/r` be the radial unit vector,
 
-  $$
-  \nabla V_i(p) = -\,\frac{\pi}{2}\,\sin\!\left(\frac{\pi r}{b_i}\right)\,\mathbf{e}_r.
-  $$
+$$
+\nabla V_i(p) = -\,\frac{\pi}{2}\,\sin\!\left(\frac{\pi r}{b_i}\right)\,\mathbf{e}_r.
+$$
 
   In code, this is scaled by an adjustment rate and applied so that points move away from obstacles when accumulating gradients across all obstacles.
 
 - Total field and descent step:
 
-  $$
-  V_{\text{total}}(p) = \sum_i V_i(p), \qquad
-  \nabla V_{\text{total}}(p) = \sum_i \nabla V_i(p),
-  $$
+$$
+V_{\text{total}}(p) = \sum_i V_i(p), \qquad
+\nabla V_{\text{total}}(p) = \sum_i \nabla V_i(p),
+$$
 
   and path points are updated by a repulsive step akin to
 
-  $$
-  p \leftarrow p - \alpha\,\nabla V_{\text{total}}(p),
-  $$
+$$
+p \leftarrow p - \alpha\,\nabla V_{\text{total}}(p),
+$$
 
   with additional clearance enforcement when `r < R_{\text{calc},i}`.
 
