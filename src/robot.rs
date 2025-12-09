@@ -93,6 +93,7 @@ impl Robot {
     pub fn set_target_speed(&mut self, speed: f32) {
         self.target_speed = speed;
     }
+
     pub fn update_position(&mut self, dt: f32) {
         self.velocity_update_timer += dt;
         
@@ -430,8 +431,16 @@ impl Robot {
             if self.path_points[i].position.distance_to(&self.path_points[i-1].position) < threshold {
                 self.path_points.remove(i);
                 removed_any = true;
-            } else {
-                i += 1;
+            } else { // det check for sharp curvature points
+                let v1 = self.path_points[i].position.minus(&self.path_points[i-1].position);
+                let v2 = self.path_points[i+1].position.minus(&self.path_points[i].position);
+                if v1.determinant(&v2) > 0.9 {
+                    println!("Removing point {}: determinant={:.3}", i, v1.determinant(&v2));
+                    self.path_points.remove(i);
+                    removed_any = true;
+                } else {
+                    i += 1;
+                }
             }
         }
         

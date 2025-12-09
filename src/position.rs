@@ -36,4 +36,16 @@ impl Position {
     pub fn distance_to(&self, other: &Position) -> f32 {
         ((self.x - other.x).powf(2.0) + (self.y - other.y).powf(2.0)).sqrt()
     }
+
+    pub fn determinant(&self, other: &Position) -> f32 {
+        (self.x * other.y - self.y * other.x)/((self.x.powf(2.0) + self.y.powf(2.0)).sqrt() * (other.x.powf(2.0) + other.y.powf(2.0)).sqrt())
+    }
+
+    pub fn minus(&self, other: &Position) -> Position {
+        Self {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z,
+        }
+    }
 }
