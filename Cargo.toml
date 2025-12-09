@@ -2,12 +2,9 @@
 name = "object-avoidant-path-gen"
 version = "0.1.0"
 edition = "2021"
+default-run = "object-avoidant-path-gen"
 
 [dependencies]
 nannou = "0.19.0"
 nannou_egui = "0.19.0"
 stl_io = "0.7.0"
-
-[[bin]]
-name = "create_test_stl"
-path = "src/create_test_stl.rs"
