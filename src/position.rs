@@ -25,6 +25,14 @@ impl Position {
         self.y += dy;
         self.z += dz;
     }
+
+    pub fn scalar(&mut self, scalar: f32) -> Position {
+        Self {
+            x: self.x * scalar,
+            y: self.y * scalar,
+            z: self.z * scalar,
+        }
+    }
     
     pub fn approx_equals(&self, other: &Position) -> bool {
         const EPSILON: f32 = 0.0001;
@@ -37,8 +45,8 @@ impl Position {
         ((self.x - other.x).powf(2.0) + (self.y - other.y).powf(2.0)).sqrt()
     }
 
-    pub fn determinant(&self, other: &Position) -> f32 {
-        (self.x * other.y - self.y * other.x)/((self.x.powf(2.0) + self.y.powf(2.0)).sqrt() * (other.x.powf(2.0) + other.y.powf(2.0)).sqrt())
+    pub fn dot(&self, other: &Position) -> f32 {
+        (self.x * other.x - self.y * other.y)/((self.x.powf(2.0) + self.y.powf(2.0)).sqrt() * (other.x.powf(2.0) + other.y.powf(2.0)).sqrt())
     }
 
     pub fn minus(&self, other: &Position) -> Position {

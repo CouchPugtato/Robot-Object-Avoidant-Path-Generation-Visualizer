@@ -431,13 +431,33 @@ impl Robot {
             if self.path_points[i].position.distance_to(&self.path_points[i-1].position) < threshold {
                 self.path_points.remove(i);
                 removed_any = true;
-            } else { // det check for sharp curvature points
-                let v1 = self.path_points[i].position.minus(&self.path_points[i-1].position);
-                let v2 = self.path_points[i+1].position.minus(&self.path_points[i].position);
-                if v1.determinant(&v2) > 0.9 {
-                    println!("Removing point {}: determinant={:.3}", i, v1.determinant(&v2));
-                    self.path_points.remove(i);
-                    removed_any = true;
+            } else { // dot check for sharp curvature points
+                let p1 = self.path_points[i-1].position;
+                let p2 = self.path_points[i].position; // central point
+                let p3 = self.path_points[i+1].position;
+                
+                let pi = self.path_points[0].position;
+                let pf = self.path_points[self.path_points.len()-1].position;
+
+                let v1 = p2.minus(&p1);
+                let v2 = p3.minus(&p2);
+
+                let pos_norm = p2.minus(&pi).scalar(1.0/p2.distance_to(&pi));
+                let path_norm = pf.minus(&pi).scalar(1.0/pf.distance_to(&pi));
+
+                if v1.dot(&v2) < 0.95 && pos_norm.approx_equals(&path_norm) {
+                    println!("Removing point {}: determinant={:.3}, norm=({:.3},{:.3}), wN:({:.3},{:.3})", i, v1.dot(&v2), pos_norm.x, pos_norm.y, path_norm.x, path_norm.y);
+                    if i < self.path_points.len() - 2 {
+                        self.path_points.remove(i);
+                        self.path_points.remove(i+1);
+                        self.path_points.remove(i-1);
+                        //self.path_points.remove(i+2);
+                        //self.path_points.remove(i-3);
+                        removed_any = true;
+                        i += 1;
+                    } else {
+                        i += 1;
+                    }
                 } else {
                     i += 1;
                 }
