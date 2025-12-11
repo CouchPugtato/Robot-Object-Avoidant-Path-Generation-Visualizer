@@ -1,7 +1,8 @@
 use crate::model::{Model, ModelConfig};
-use crate::position::Position;
+use crate::position::{self, Position, ORIGIN};
 use crate::wire::Wire;
 use crate::obstacle::Obstacle;
+use clearscreen;
 use nannou::color::rgb;
 
 pub struct PathPoint {
@@ -426,44 +427,55 @@ impl Robot {
         let threshold = original_step_distance * 1.3;
         let mut i = 1;
         let mut removed_any = false;
+        clearscreen::clear().expect("failedtoclear");//
         
         while i < self.path_points.len() - 1 {
+            if self.path_points.len() <= 12 { break; }
+            if i == 0 { i = 1; continue; }
             if self.path_points[i].position.distance_to(&self.path_points[i-1].position) < threshold {
                 self.path_points.remove(i);
                 removed_any = true;
-            } else { // dot check for sharp curvature points
-                let p1 = self.path_points[i-1].position;
-                let p2 = self.path_points[i].position; // central point
-                let p3 = self.path_points[i+1].position;
-                
-                let pi = self.path_points[0].position;
-                let pf = self.path_points[self.path_points.len()-1].position;
+            } else {
+                i += 1;
+            }
+        }
 
-                let v1 = p2.minus(&p1);
-                let v2 = p3.minus(&p2);
+        i = 2;
+        while i < self.path_points.len() - 2 {  // global alignment check for rejoin pruning
+            let pos_i = self.path_points[0].position;
+            if i == 0 { i = 2; }
+            let v1 = self.path_points[i-1].position.minus(&pos_i);
+            let v2 = self.path_points[i].position.minus(&pos_i); // central point
+            let v3 = self.path_points[i+1].position.minus(&pos_i);
+            let v_path = self.path_points[self.path_points.len()-1].position.minus(&pos_i);
 
-                let pos_norm = p2.minus(&pi).scalar(1.0/p2.distance_to(&pi));
-                let path_norm = pf.minus(&pi).scalar(1.0/pf.distance_to(&pi));
-
-                if v1.dot(&v2) < 0.95 && pos_norm.approx_equals(&path_norm) {
-                    println!("Removing point {}: determinant={:.3}, norm=({:.3},{:.3}), wN:({:.3},{:.3})", i, v1.dot(&v2), pos_norm.x, pos_norm.y, path_norm.x, path_norm.y);
-                    if i < self.path_points.len() - 2 {
-                        self.path_points.remove(i);
-                        self.path_points.remove(i+1);
-                        self.path_points.remove(i-1);
-                        //self.path_points.remove(i+2);
-                        //self.path_points.remove(i-3);
-                        removed_any = true;
-                        i += 1;
-                    } else {
-                        i += 1;
-                    }
+            let is_colinear_to_path = |v: &Position| {
+                //if v.approx_equals(&ORIGIN) { return false; } // check if is zero vector
+                v.dot(&v_path)/(v.distance_to(&ORIGIN) * v_path.distance_to(&ORIGIN)) > 0.999999
+            };
+            println!("v{}=({:.6},{:.6}), {}:{}",i,v2.x,v2.y, v2.dot(&v_path)/(v2.distance_to(&ORIGIN) * v_path.distance_to(&ORIGIN)), is_colinear_to_path(&v2));
+            //println!("v1=({:.6},{:.6}), v2=({:.6},{:.6}), v3=({:.6},{:.6}), v_path=({:.6},{:.6})", v1.norm2D().x, v1.norm2D().y, v2.norm2D().x, v2.norm2D().y, v3.norm2D().x, v3.norm2D().y, v_path.norm2D().x, v_path.norm2D().y);
+            if is_colinear_to_path(&v2) && (is_colinear_to_path(&v1) || is_colinear_to_path(&v3)) && (is_colinear_to_path(&v1) != is_colinear_to_path(&v3)) {
+                if i < self.path_points.len() - 4 {
+                    self.path_points.remove(i+2);
+                    self.path_points.remove(i+1);
+                    self.path_points.remove(i);
+                    self.path_points.remove(i-1);
+                    self.path_points.remove(i-1);
+                    //println!(
+                        //"Removing: prev=({:.6},{:.6}), curr=({:.6},{:.6}), next=({:.6},{:.6}), world=({:.6},{:.6})",
+                        //"THIS {} {}",
+                        //is_colinear_to_path(&v1), is_colinear_to_path(&v3)
+                    //);
+                    i += 2;
+                    removed_any = true
                 } else {
                     i += 1;
                 }
+            } else {
+                i += 1;
             }
         }
-        
         removed_any
     }
 
@@ -538,4 +550,3 @@ impl Robot {
         }
     }
 }
-

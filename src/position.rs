@@ -46,7 +46,15 @@ impl Position {
     }
 
     pub fn dot(&self, other: &Position) -> f32 {
-        (self.x * other.x - self.y * other.y)/((self.x.powf(2.0) + self.y.powf(2.0)).sqrt() * (other.x.powf(2.0) + other.y.powf(2.0)).sqrt())
+        self.x * other.x + self.y * other.y
+    }
+
+    pub fn norm2D(&self) -> Position {
+        let norm = (self.x.powf(2.0) + self.y.powf(2.0)).sqrt();
+        if norm <= f32::EPSILON {
+            return Self { x: 0.0, y: 0.0, z: 0.0 };
+        }
+        Self { x: self.x / norm, y: self.y / norm, z: 0.0 }
     }
 
     pub fn minus(&self, other: &Position) -> Position {
