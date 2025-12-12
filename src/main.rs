@@ -272,7 +272,6 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                                 
                                 if let Some(robot) = &mut model.robot {
                                     robot.generate_path(&model.target_position.get_position(), model.path_segments, &model.obstacles);
-                                    robot.optimize_path(&model.obstacles);
                                 }
                             }
                         }
@@ -318,7 +317,6 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                     
                     if let Some(robot) = &mut model.robot {
                         robot.generate_path(&position, model.path_segments, &model.obstacles);
-                        robot.optimize_path(&model.obstacles);
                     }
                 }
                 
@@ -373,7 +371,6 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                     if let Some(robot) = &mut model.robot {
                         let target_pos = model.target_position.get_position();
                         robot.generate_path(&target_pos, model.path_segments, &model.obstacles);
-                        robot.optimize_path(&model.obstacles);
                     }
                 }
                 
@@ -382,7 +379,6 @@ fn update(app: &App, model: &mut AppModel, update: Update) {
                         if let Some(robot) = &mut model.robot {
                             let target_pos = model.target_position.get_position();
                             robot.generate_path(&target_pos, model.path_segments, &model.obstacles);
-                            robot.optimize_path(&model.obstacles);
                             
                             if model.models.iter().any(|m| m.config.name == "point") {
                                 model.models.retain(|m| m.config.name != "point");
@@ -552,7 +548,6 @@ fn model(app: &App) -> AppModel {
     if let Some(robot_ref) = &mut robot {
         let target_pos = target_position.get_position();
         robot_ref.generate_path(&target_pos, 160, &obstacles);
-        robot_ref.optimize_path(&obstacles);
     }
     
     gradient_field::set_obstacles_ref(&obstacles);

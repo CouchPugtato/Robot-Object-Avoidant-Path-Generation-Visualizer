@@ -164,6 +164,8 @@ impl Robot {
 
         let step_distance = (dx*dx + dy*dy).sqrt();
         let _ = self.clean_path(step_distance);
+        self.optimize_path(obstacles);
+        self.get_points_of_curvature(); // remove points that are too sharp of a turn
     }
     
     pub fn get_path_wires(&self) -> Vec<Wire> {
@@ -422,12 +424,12 @@ impl Robot {
         return all_points_optimized;
     }
 
-    pub fn clean_path(&mut self, original_step_distance: f32) -> bool {
+    fn clean_path(&mut self, original_step_distance: f32) -> bool {
         // remove points closer together than 1.3x step distance, avoid clumping
         let threshold = original_step_distance * 1.3;
         let mut i = 1;
         let mut removed_any = false;
-        clearscreen::clear().expect("failedtoclear");//
+        // clearscreen::clear().expect("failedtoclear");
         
         while i < self.path_points.len() - 1 {
             if self.path_points.len() <= 12 { break; }
@@ -439,9 +441,15 @@ impl Robot {
                 i += 1;
             }
         }
+        removed_any
+    }
 
-        i = 2;
-        while i < self.path_points.len() - 2 {  // global alignment check for rejoin pruning
+    // returns a Vec of points that are at the beginning or end of the path curving
+    fn get_points_of_curvature(&mut self) {
+        let mut i = 2;
+        let mut points: Vec<usize> = Vec::new();
+        
+        while i < self.path_points.len() - 2 { // global alignment check for rejoin pruning
             let pos_i = self.path_points[0].position;
             if i == 0 { i = 2; }
             let v1 = self.path_points[i-1].position.minus(&pos_i);
@@ -450,33 +458,34 @@ impl Robot {
             let v_path = self.path_points[self.path_points.len()-1].position.minus(&pos_i);
 
             let is_colinear_to_path = |v: &Position| {
-                //if v.approx_equals(&ORIGIN) { return false; } // check if is zero vector
-                v.dot(&v_path)/(v.distance_to(&ORIGIN) * v_path.distance_to(&ORIGIN)) > 0.999999
+                if v.approx_equals(&ORIGIN) { return false; } // check if is zero vector
+                v.dot(&v_path)/(v.distance_to(&ORIGIN) * v_path.distance_to(&ORIGIN)) > 0.999999 // 1-epsilon to account for floating point error                                                    
             };
-            println!("v{}=({:.6},{:.6}), {}:{}",i,v2.x,v2.y, v2.dot(&v_path)/(v2.distance_to(&ORIGIN) * v_path.distance_to(&ORIGIN)), is_colinear_to_path(&v2));
-            //println!("v1=({:.6},{:.6}), v2=({:.6},{:.6}), v3=({:.6},{:.6}), v_path=({:.6},{:.6})", v1.norm2D().x, v1.norm2D().y, v2.norm2D().x, v2.norm2D().y, v3.norm2D().x, v3.norm2D().y, v_path.norm2D().x, v_path.norm2D().y);
-            if is_colinear_to_path(&v2) && (is_colinear_to_path(&v1) || is_colinear_to_path(&v3)) && (is_colinear_to_path(&v1) != is_colinear_to_path(&v3)) {
-                if i < self.path_points.len() - 4 {
-                    self.path_points.remove(i+2);
-                    self.path_points.remove(i+1);
-                    self.path_points.remove(i);
-                    self.path_points.remove(i-1);
-                    self.path_points.remove(i-1);
-                    //println!(
-                        //"Removing: prev=({:.6},{:.6}), curr=({:.6},{:.6}), next=({:.6},{:.6}), world=({:.6},{:.6})",
-                        //"THIS {} {}",
-                        //is_colinear_to_path(&v1), is_colinear_to_path(&v3)
-                    //);
-                    i += 2;
-                    removed_any = true
-                } else {
-                    i += 1;
+            if is_colinear_to_path(&v2) && (is_colinear_to_path(&v1) ^ is_colinear_to_path(&v3)) && i < self.path_points.len() - 2 { // 2 to ensure last point is always there as well as i+1
+                let mut dist = 0.0;
+                let mut remove_count = 1;
+                let center = self.path_points[i].position;
+                while dist < self.model.config.scale*0.25 as f32 && i+remove_count < self.path_points.len() && i-remove_count > 0 {  
+                    dist = self.path_points[i-remove_count].position.distance_to(&center);
+                    if dist < self.model.config.scale*0.25 && i+remove_count < self.path_points.len() && i-remove_count > 0 {
+                        remove_count += 1;
+                    }
                 }
+                let start_idx = i - remove_count;
+                let end_idx = (i + remove_count).min(self.path_points.len() - 1);
+                for idx in start_idx..=end_idx {
+                    points.push(idx);
+                }
+                i = end_idx + 1;
             } else {
                 i += 1;
             }
         }
-        removed_any
+
+        println!("points: {:?}", points);
+        for idx in points.into_iter().rev() {
+            self.path_points.remove(idx);    
+        }
     }
 
     pub fn follow_path(&mut self) {
