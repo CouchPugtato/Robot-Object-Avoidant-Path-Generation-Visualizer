@@ -374,8 +374,7 @@ impl Robot {
             
             if point.get_height() > PATH_OPTIMIZATION_THRESHOLD || too_close_to_obstacle {
                 all_points_optimized = false;
-                let mut total_dx = 0.0;
-                let mut total_dy = 0.0;
+                let mut total_delta = Position::new(0.0, 0.0, 0.0);
                 
                 for obstacle in obstacles {
                     let gradient = obstacle.cosine_gradient_function(point.position);
@@ -385,33 +384,27 @@ impl Robot {
                     let min_safe_distance = obstacle.get_radius() + 0.1;
                     
                     if dist < min_safe_distance {
-                        let dx = point.position.x - obstacle_pos.x;
-                        let dy = point.position.y - obstacle_pos.y;
-                        let dist = (dx*dx + dy*dy).sqrt();
-                        
-                        if dist > 0.001 {
-                            let nx = dx / dist;
-                            let ny = dy / dist;
-                            total_dx += nx * 0.5;
-                            total_dy += ny * 0.5;
+                        let diff = point.position.minus(&obstacle_pos);
+                        if diff.norm2D() > 0.001 {
+                            let mut push = diff.norm2D();
+                            total_delta = total_delta.minus(&push.scalar(0.5));
                         }
                     } else {
-                        total_dx -= gradient[0];
-                        total_dy -= gradient[1];
+                        let grad = Position::new(gradient[0], gradient[1], 0.0);
+                        total_delta = total_delta.minus(&grad);
                     }
                 }
                 
-                if total_dx.abs() < MIN_ADJUST_RATE && total_dy.abs() < MIN_ADJUST_RATE {
-                    if total_dx != 0.0 {
-                        total_dx = total_dx.signum() * MIN_ADJUST_RATE;
+                if total_delta.x.abs() < MIN_ADJUST_RATE && total_delta.y.abs() < MIN_ADJUST_RATE {
+                    if total_delta.x != 0.0 {
+                        total_delta.x = total_delta.x.signum() * MIN_ADJUST_RATE;
                     }
-                    if total_dy != 0.0 {
-                        total_dy = total_dy.signum() * MIN_ADJUST_RATE;
+                    if total_delta.y != 0.0 {
+                        total_delta.y = total_delta.y.signum() * MIN_ADJUST_RATE;
                     }
                 }
                 
-                point.position.x += total_dx;
-                point.position.y += total_dy;
+                point.position.move_by(total_delta.x, total_delta.y, 0.0);
                 
                 let mut height = 0.0;
                 for obstacle in obstacles {
