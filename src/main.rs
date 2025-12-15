@@ -614,9 +614,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
             model.direction,
             model.rotation_y,
         );
-        let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-        let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-        draw.line().start(draw_start).end(draw_end).color(wire.color);
+        if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+            let draw_start: Vec2 = point_on_canvas(s);
+            let draw_end: Vec2 = point_on_canvas(e);
+            draw.line().start(draw_start).end(draw_end).color(wire.color);
+        }
     }
     
     if let Some(robot) = &model.robot {
@@ -633,9 +635,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
                 model.direction,
                 model.rotation_y,
             );
-            let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-            let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-            draw.line().start(draw_start).end(draw_end).color(nannou::color::rgb::<u8>(0, 255, 0));
+            if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+                let draw_start: Vec2 = point_on_canvas(s);
+                let draw_end: Vec2 = point_on_canvas(e);
+                draw.line().start(draw_start).end(draw_end).color(nannou::color::rgb::<u8>(0, 255, 0));
+            }
         }
     }
     
@@ -654,9 +658,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
                     model.direction,
                     model.rotation_y,
                 );
-                let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-                let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-                draw.line().start(draw_start).end(draw_end).color(wire.color);
+                if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+                    let draw_start: Vec2 = point_on_canvas(s);
+                    let draw_end: Vec2 = point_on_canvas(e);
+                    draw.line().start(draw_start).end(draw_end).color(wire.color);
+                }
             }
         }
     }
@@ -675,9 +681,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
                 model.direction,
                 model.rotation_y,
             );
-            let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-            let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-            draw.line().start(draw_start).end(draw_end).color(wire.color);
+            if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+                let draw_start: Vec2 = point_on_canvas(s);
+                let draw_end: Vec2 = point_on_canvas(e);
+                draw.line().start(draw_start).end(draw_end).color(wire.color);
+            }
         }
     }
     
@@ -695,9 +703,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
                 model.direction,
                 model.rotation_y,
             );
-            let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-            let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-            draw.line().start(draw_start).end(draw_end).color(GREEN);
+            if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+                let draw_start: Vec2 = point_on_canvas(s);
+                let draw_end: Vec2 = point_on_canvas(e);
+                draw.line().start(draw_start).end(draw_end).color(GREEN);
+            }
         }
     }
     
@@ -714,9 +724,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
             model.direction,
             model.rotation_y,
         );
-        let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-        let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-        draw.line().start(draw_start).end(draw_end).color(wire.color);
+        if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+            let draw_start: Vec2 = point_on_canvas(s);
+            let draw_end: Vec2 = point_on_canvas(e);
+            draw.line().start(draw_start).end(draw_end).color(wire.color);
+        }
     }
     
     if model.show_path && model.robot.is_some() {
@@ -734,9 +746,11 @@ fn view(app: &App, model: &AppModel, frame: Frame) {
                     model.direction,
                     model.rotation_y,
                 );
-                let draw_start: Vec2 = point_on_canvas(cam_pos_start);
-                let draw_end: Vec2 = point_on_canvas(cam_pos_end);
-                draw.line().start(draw_start).end(draw_end).color(wire.color);
+                if let Some((s, e)) = clip_to_near_plane(cam_pos_start, cam_pos_end, 0.01) {
+                    let draw_start: Vec2 = point_on_canvas(s);
+                    let draw_end: Vec2 = point_on_canvas(e);
+                    draw.line().start(draw_start).end(draw_end).color(wire.color);
+                }
             }
         }
     }
@@ -763,16 +777,31 @@ fn to_cam_coords(pos: Position, cam: Position, direction: f32, rotation_y: f32) 
     r_pos
 }
 
+fn clip_to_near_plane(a: Position, b: Position, near: f32) -> Option<(Position, Position)> {
+    let mut s = a;
+    let mut e = b;
+    let ax = s.x;
+    let bx = e.x;
+    if ax <= near && bx <= near { return None; }
+    let dx = bx - ax;
+    if ax <= near || bx <= near {
+        if dx == 0.0 { return None; }
+        let t = (near - ax) / dx;
+        let y = s.y + t * (e.y - s.y);
+        let z = s.z + t * (e.z - s.z);
+        if ax <= near {
+            s.x = near; s.y = y; s.z = z;
+        } else {
+            e.x = near; e.y = y; e.z = z;
+        }
+    }
+    Some((s, e))
+}
+
 fn point_on_canvas(pos: Position) -> Vec2 {
-    let mut angle_h = pos.y.atan2(pos.x);
-    let mut angle_v = pos.z.atan2(pos.x);
-
-    // remove fishbowl effect
-    angle_h /= angle_h.cos().abs();
-    angle_v /= angle_v.cos().abs();
-
-    vec2(
-        -angle_h * SCREENWIDTH as f32 / FOV,
-        -angle_v * SCREENHEIGHT as f32 / FOV,
-    )
+    let near: f32 = 0.01;
+    let x = if pos.x.abs() < near { near.copysign(pos.x) } else { pos.x };
+    let sx = -(pos.y / x) * SCREENWIDTH as f32 / FOV;
+    let sy = -(pos.z / x) * SCREENHEIGHT as f32 / FOV;
+    vec2(sx, sy)
 }
